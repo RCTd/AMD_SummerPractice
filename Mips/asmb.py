@@ -2,19 +2,19 @@ import re
 
 
 rtype={"add": [1,2,0,"00000","100000"],
-             "and": [2,0,1,"00000","010100"]}
+       "and": [2,0,1,"00000","010100"]}
 
 itype={"addi":["001000",1,0],
        "beq" :["000100",0,1],
        "bne" :["000101",0,1]}
 jtype={"j":"000010"}
 
-dictionar={"zero":0,"v":2,"a":4,"t":8,"s":16}
+dictionar={"$zero":0,"$v":2,"$a":4,"$t":8,"$s":16}
 
 
 #inst={"add": r"add *"+rd+"( *, *"+rsrt+"){2}"}
 instructions=[rtype,itype,jtype]
-rsrt="[a-z]{1,4}[0-9]?"
+rsrt="\$?[a-z]{1,4}[0-9]?"
 tags={}
 result=[]
 offset=0
@@ -86,7 +86,7 @@ def rtypeToBin(inst,registers):
     return op + rs + rt + rd + shmat + fnct
 
 def regtoint(reg):
-    matches = re.findall(r'([a-zA-Z]+)(\d*)', reg)
+    matches = re.findall(r'(\$?[a-zA-Z]+)(\d*)', reg)
     letters = [match[0] for match in matches]
     numbers = [match[1] for match in matches]
     regvalue = int(dictionar[letters[0]])
