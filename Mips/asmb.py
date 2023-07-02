@@ -6,7 +6,9 @@ rtype={"add": [1,2,0,"00000","100000"],
 
 itype={"addi":["001000",1,0],
        "beq" :["000100",0,1],
-       "bne" :["000101",0,1]}
+       "bne" :["000101",0,1],
+       "lw"  :["100011",1,0],
+       "sw"  :["101011",1,0]}
 jtype={"j":"000010"}
 
 dictionar={"$zero":0,"$v":2,"$a":4,"$t":8,"$s":16}
@@ -15,7 +17,7 @@ dictionar={"$zero":0,"$v":2,"$a":4,"$t":8,"$s":16}
 #inst={"add": r"add *"+rd+"( *, *"+rsrt+"){2}"}
 instructions=[rtype,itype,jtype]
 rsrt="\$?[a-z]{1,4}[0-9]?"
-tags={}
+tags={":":0}
 result=[]
 offset=0
 
@@ -61,13 +63,15 @@ def jtypeToBin(inst,registers):
 def itypeToBin(inst,registers,index):
     op=itype[inst][0]
     imm = ",".join(registers.split(",")[-1:])
+    if (re.findall("\d*\(\$?[a-z]{1,4}\d*\)", imm)):#lw, sw
+        imm = imm.split("(", 1)[0]
+
     try:
-        imm=format(int(imm), '016b')
+        imm='0000000000000000' if imm=="" else format(int(imm), '016b')
         if(imm[0]=='-'):
-            imm=imm.replace("-","0")
-            inverted_string = ''.join('1' if bit == '0' else '0' for bit in imm)
+            inverted_string = ''.join('0' if bit == '1' else '1' for bit in imm)
             imm = bin(int(inverted_string, 2) + 1)[2:]
-    except:
+    except:#beq
         tag = (tags[imm + ":"])-index
         imm=format(tag, '016b')
     registers=re.findall(rsrt, registers)

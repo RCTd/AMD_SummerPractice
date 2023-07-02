@@ -20,8 +20,7 @@ module PC(in,
           out);
   input [31:0]in;
   input clk;
-  output reg [31:0]out;
-  initial out=32'h0000;
+  output reg [31:0]out=32'h0000;
   always@(posedge clk)
     out=in;  
 endmodule
@@ -75,7 +74,7 @@ module DataMemory(addr,
   output[31:0]out; 
   reg [7:0]mem[1023:0];
   
-  always@(negedge clk)//addr)
+  always@(posedge clk)//addr)
     if(memWrite==1)
       begin
         mem[addr+3]=writeData[31:24];
@@ -105,25 +104,21 @@ module Registers(readRegister1,
   output [31:0]readData1,readData2;
   reg [31:0]inReg[31:0];
   
-  
-  reg [6:0]i;
-   initial 
-     begin
-       
-       for(i=0;i<32;i=i+1)
+  integer i;
+  initial for(i=0;i<32;i=i+1)
          inReg[i]={64'h0};
-     end
   
   assign readData1=inReg[readRegister1];
   assign readData2=inReg[readRegister2];
 
-  always@(negedge clk)
+  always@(*)
+    inReg[0]=0;
+  
+  always@(posedge clk)
     begin
       if(regWrite==1)
         inReg[writeRegister]=writeData;
-      inReg[0]=0;
-    end
-  		
+    end	
   
 endmodule
 
@@ -139,9 +134,8 @@ module Control(opcode,
                ALUSrc,
                RegWrite);
   input [5:0]opcode;
-  output reg RegDst,Jump,Branch,MemRead,MemtoReg,MemWrite,ALUSrc,RegWrite;
-  output reg [1:0]ALUOp;
-  initial begin RegDst=0;Jump=0;Branch=0;MemRead=0;MemtoReg=0;MemWrite=0;ALUSrc=0;RegWrite=0;ALUOp=0;end
+  output reg RegDst=0,Jump=0,Branch=0,MemRead=0,MemtoReg=0,MemWrite=0,ALUSrc=0,RegWrite=0;
+  output reg [1:0]ALUOp=0;
   always@(opcode)
     case(opcode)
       6'h00://R-Type
@@ -180,6 +174,9 @@ module ALU(opA,
       casex(opSel)
         3'b010:result=opA+opB;
         3'b110:result=opA-opB;
+        3'b000:result=opA&opB;
+        3'b001:result=opA|opB;
+        3'b111:result=(opA<opB)?32'h1:32'h0;
         default:result=32'bx;
 
       endcase
@@ -203,6 +200,9 @@ module ALUcontrol(ALUOp,
       8'b1x_100100: opSel=3'b010;
       8'bx1_xxxxxx,
       8'b1x_100010: opSel=3'b110;
+      8'b1x_100100: opSel=3'b000;
+      8'b1x_100101: opSel=3'b001;
+      8'b1x_101010: opSel=3'b111;
     endcase
 endmodule
       

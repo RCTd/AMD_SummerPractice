@@ -5,7 +5,7 @@ module test();
   
   reg Clock,stop_Clock;
   reg [31:0] addr,Ibits,Dbits;
-  integer fim, fdm, Icount,Dcount;
+  integer fim, fdm, Icount,Dcount,i;
   localparam EOF = -1;
   
   initial 
@@ -17,7 +17,7 @@ module test();
     end
   initial
     begin
-      clk= 1'bx;  
+      clk= 1'b0;  
       while (!stop_Clock) 
         #5;
       clk= 1'b0;
@@ -25,11 +25,20 @@ module test();
     end
   
   initial
-    begin// Write Instruction Memory
-      $dumpfile("dump.vcd"); $dumpvars;
+    begin
+      $dumpfile("dump.vcd"); 
+      $dumpvars(0,mips);
+      // view some data memory
+      for(i = 0; i < 32; i = i + 1)
+        $dumpvars(1, mips.dm.mem[i]);
+	
+      // view registers
+      for(i = 0; i < 32; i = i + 1)
+        $dumpvars(1, mips.rg.inReg[i]);	
+      
       fim = $fopen("instM.txt", "r");
       addr=0;
-      begin : read_I_loop
+      begin : read_I_loop// Read Instruction Memory
         forever @(posedge Clock)
         begin
           Icount = $fscanf( fim, "%32b", Ibits );
@@ -37,7 +46,7 @@ module test();
             disable read_I_loop;
           else
             begin
-              $display("Ibits = %32b ", Ibits);
+              $display("%h :Ibits = %h ",addr, Ibits);
               mips.im.mem[addr  ]=Ibits[7:0];
               mips.im.mem[addr+1]=Ibits[15:8];
               mips.im.mem[addr+2]=Ibits[23:16];
@@ -47,13 +56,13 @@ module test();
         end 
       end //on EOF this block is disabled
       $fclose( fim );
-      
+      Ibits=addr-4;
       fdm = $fopen("dataM.txt", "r");
       addr=0;
-      begin : read_D_loop
+      begin : read_D_loop// Read Data Memory
         forever @(posedge Clock)
         begin
-          Dcount = $fscanf( fim, "%32b", Dbits );
+          Dcount = $fscanf( fim, "%32d", Dbits );
           if ( Dcount == EOF || Dcount == 0 )
             disable read_D_loop;
           else
@@ -70,11 +79,11 @@ module test();
       $fclose( fdm );
       stop_Clock = 1;
       
-      //this is the last line of my current program
-      while(mips.pc.out!==32'h28)
+      //run until last instruction
+      while(mips.pc.out!==Ibits)
         #5;
     #10 $finish(1);
-    
+
   end
 
 endmodule
