@@ -144,6 +144,9 @@ module Control(opcode,
       6'h8://addi
       	{RegDst,Jump,Branch,MemRead,MemtoReg,MemWrite,ALUSrc,RegWrite,ALUOp}
         ={1'b0 ,1'b0,1'b0  ,1'b0   ,1'b0    ,1'b0    ,1'b1  ,1'b1    ,2'b00};
+      6'h4://andi
+      	{RegDst,Jump,Branch,MemRead,MemtoReg,MemWrite,ALUSrc,RegWrite,ALUOp}
+        ={1'b0 ,1'b0,1'b1  ,1'b0   ,1'b0    ,1'b0    ,1'b0  ,1'b0    ,2'b01};
       6'h23://lw
       	{RegDst,Jump,Branch,MemRead,MemtoReg,MemWrite,ALUSrc,RegWrite,ALUOp}
         ={1'b0 ,1'b0,1'b0  ,1'b1   ,1'b1    ,1'b0    ,1'b1  ,1'b1    ,2'b00};
@@ -159,24 +162,35 @@ module Control(opcode,
     endcase
 endmodule
 
+`define OPSELNRBITI 3
 module ALU(opA,
            opB,
            opSel,
            result,
            zero);
   input [31:0]opA,opB;
-  input [3-1:0]opSel;
+  input [`OPSELNRBITI-1:0]opSel;
   output reg[31:0]result=32'h00000000;
   output reg zero;
   
   always@(*)
     begin
       casex(opSel)
-        3'b010:result=opA+opB;
-        3'b110:result=opA-opB;
-        3'b000:result=opA&opB;
-        3'b001:result=opA|opB;
-        3'b111:result=(opA<opB)?32'h1:32'h0;
+        `OPSELNRBITI'b000:result=opA&opB;				//AND
+        `OPSELNRBITI'b001:result=opA|opB;				//OR
+        `OPSELNRBITI'b010:result=opA+opB;				//ADD
+        `OPSELNRBITI'b110:result=opA-opB;				//SUB
+        `OPSELNRBITI'b111:result=(opA<opB)?32'h1:32'h0;//SLT
+        
+        //valori ce nu se regasesc in vreo documentatie
+        `OPSELNRBITI'b011:result=opA^opB;				//XOR
+        `OPSELNRBITI'b100:result=~(opA|opB);			//NOR
+        `OPSELNRBITI'b101:								//DIV
+          begin 
+            result[31:16]=opA%opB;
+            result[15:0]=opA/opB;
+          end
+        
         default:result=32'bx;
 
       endcase
@@ -191,18 +205,22 @@ module ALUcontrol(ALUOp,
                   opSel);
   input [1:0]ALUOp;
   input[5:0]funct;
-  output reg[3-1:0]opSel;
+  output reg[`OPSELNRBITI-1:0]opSel;
   
   always@(*)
     casex({ALUOp,funct})
-      8'b00_xxxxxx,
-      8'b1x_100000,
-      8'b1x_100100: opSel=3'b010;
-      8'bx1_xxxxxx,
-      8'b1x_100010: opSel=3'b110;
-      8'b1x_100100: opSel=3'b000;
-      8'b1x_100101: opSel=3'b001;
-      8'b1x_101010: opSel=3'b111;
+      8'b00_xxxxxx,//+
+      8'b1x_100000://add
+        opSel=`OPSELNRBITI'b010;
+      8'bx1_xxxxxx,//-
+      8'b1x_100010://sub
+        opSel=`OPSELNRBITI'b110;
+      8'b1x_100100: opSel=`OPSELNRBITI'b000;//and
+      8'b1x_100101: opSel=`OPSELNRBITI'b001;//or
+      8'b1x_101010: opSel=`OPSELNRBITI'b111;//slt
+      8'b1x_011011: opSel=`OPSELNRBITI'b101;//div
+      8'b1x_100110: opSel=`OPSELNRBITI'b011;//xor
+      8'b1x_100111: opSel=`OPSELNRBITI'b100;//nor
     endcase
 endmodule
       
@@ -285,7 +303,7 @@ module MIPS(clk);
   addbout,muxbout,add4out;
   wire[27:0] sh2jout;
   wire[4:0]muxInstOut;
-  wire[2:0] opSel;
+  wire[`OPSELNRBITI-1:0] opSel;
   wire[1:0] ALUOp;
   wire RegDst,Jump,Branch,MemRead,MemtoReg,MemWrite,
 	ALUSrc,RegWrite,zero;
