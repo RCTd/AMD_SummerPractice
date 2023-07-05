@@ -1,12 +1,18 @@
 import re
-
-
-rtype={"add": [1,2,0,"00000","100000"],
-       "and": [2,0,1,"00000","010100"],
-       "or":  [1,2,0,"00000","100101"],
-       "xor": [1,2,0,"00000","100110"],
-       "nor": [1,2,0,"00000","100111"],
-       "slt": [1,2,0,"00000","101010"]}
+            #rd,rs,rt
+rtype={"add": [0,1,2,"00000","100000"],
+       "and": [0,1,2,"00000","010100"],
+       "or":  [0,1,2,"00000","100101"],
+       "xor": [0,1,2,"00000","100110"],
+       "nor": [0,1,2,"00000","100111"],
+       "slt": [0,1,2,"00000","101010"],
+       "sll": [0,1,0,"","000000"],
+       "srl": [0,1,0,"","000010"],
+       "sra": [0,1,0,"","000011"],
+       "sllv":[0,1,2,"00000","000100"],
+       "srlv":[0,1,2,"00000","000110"],
+       "srav":[0,1,2,"00000","000111"],
+       "div": [0,1,2,"00000","011010"]}
 
 itype={"addi":["001000",1,0],
        "beq" :["000100",0,1],
@@ -58,6 +64,12 @@ def main():
     binary=[bin[1] for bin in result]
     #binary=[hex(int(bin[1], 2))[2:].zfill(4)   for bin in result]
     print(*binary, sep = "\n")
+    hexa = [hex(int(bin, 2)) for bin in binary]
+    print(*hexa, sep="\n")
+
+    for index,bin in enumerate(binary):
+        print(f"{{mem[{index*4+3}],mem[{index*4+2}],mem[{index*4+1}],mem[{index*4}]}}=32'b{bin}; //{hexa[index]} \t{result[index][0]}")
+
 
 def jtypeToBin(inst,registers):
     op=jtype[inst]
@@ -85,11 +97,15 @@ def itypeToBin(inst,registers,index):
 
 def rtypeToBin(inst,registers):
     op = "000000"
+    imm = ",".join(registers.split(",")[-1:])
     registers = re.findall(rsrt, registers)
-    rs = regtoint(registers[rtype[inst][0]])
-    rt = regtoint(registers[rtype[inst][1]])
-    rd = regtoint(registers[rtype[inst][2]])
+    rd = regtoint(registers[rtype[inst][0]])
+    rs = regtoint(registers[rtype[inst][1]])
+    rt = regtoint(registers[rtype[inst][2]])
     shmat = rtype[inst][3]
+    if(shmat==""):
+        shmat=format(int(imm), '05b');
+        rt="00000"
     fnct = rtype[inst][4]
     return op + rs + rt + rd + shmat + fnct
 
