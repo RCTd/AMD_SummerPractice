@@ -3,7 +3,6 @@ module test();
   
   MIPS mips(.clk(clk));
   
-  reg [31:0] addr;
   integer i;
   initial
     begin
@@ -24,6 +23,7 @@ module test();
       for(i = 0; i < 32; i = i + 1)
         $dumpvars(1, mips.rg.inReg[i]);	
 
+      //on line 136 is my last program instruction
       while(mips.pc.out!==136)
         #5;
       #20 $finish(1);	
