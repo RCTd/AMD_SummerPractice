@@ -1,0 +1,23 @@
+CC := gcc
+CFLAGS := -Wall
+
+BUILDDIR := out
+SOURCES := $(wildcard *.c)
+OBJECT_NAMES = $(SOURCES:.c=.o)
+OBJECTS := $(patsubst %,$(BUILDDIR)/%,$(OBJECT_NAMES))
+EXECUTABLE := $(BUILDDIR)/mips.exe
+
+.PHONY: all clean
+
+all: $(EXECUTABLE)
+
+$(EXECUTABLE): $(OBJECTS)
+	@echo "Linking $(SOURCES)"
+	$(CC) $(CFLAGS) $^ -o $@
+
+$(OBJECTS): $(BUILDDIR)/%.o : $(SOURCES)
+	@echo "Compiling $(SOURCES)"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+clean:
+	rm -rf $(BUILDDIR)/*.o $(EXECUTABLE)
