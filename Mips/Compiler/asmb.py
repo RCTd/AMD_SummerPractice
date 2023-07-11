@@ -74,10 +74,10 @@ def main():
          print(f"{{mem[{index*4+3}],mem[{index*4+2}],mem[{index*4+1}],mem[{index*4}]}}=32'b{bin}; //{hexa[index]} \t{result[index][0]}")
 
     for bin in binary:
-        print(f"{bin[24:31]} {bin[16:23]} {bin[8:15]} {bin[0:7]}")
+        print(f"{bin[24:32]} {bin[16:24]} {bin[8:16]} {bin[0:8]}")
 
-    for bin in binary:
-        print(f"\"{bin[24:31]}\",\"{bin[16:23]}\",\"{bin[8:15]}\",\"{bin[0:7]}\",")
+    for index,bin in enumerate(binary):
+        print(f"\"{bin[24:32]}\",\"{bin[16:24]}\",\"{bin[8:16]}\",\"{bin[0:8]}\", //{result[index][0]}")
 
 def jtypeToBin(inst,registers):
     op=jtype[inst]
