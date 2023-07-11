@@ -4,6 +4,12 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+#define PcCycles 1
+#define ImCycles 1
+#define DeCycles 1
+#define ExCycles 1
+
+#define cycleBits 5
 #define word 32
 #define byte 8
 #define regBits 5
@@ -14,8 +20,7 @@
 #define jaddrBits 26
 #define deOutBits (1+2+regBits+regBits+regBits+aluOpBits+immBits+jaddrBits)
 
-long strToInt(char* str,int base)
-{
+long strToInt(char* str,int base){
     char*output;
     long intstr = strtol(str, &output, base);
     if (*output) {
@@ -31,7 +36,8 @@ char* toBinaryString(long int n) {
     int num_bits = sizeof(long int)*4;
     char *string = malloc(num_bits + 1);
     if (!string) {
-        return NULL;
+        printf("toBinaryString error");
+        exit(3);
     }
     for (int i = num_bits - 1; i >= 0; i--) {
         string[i] = (n & 1) + '0';
@@ -41,9 +47,17 @@ char* toBinaryString(long int n) {
     return string;
 }
 
-void PC(char* pcIn,int pcOut,int pcexOut)
+void PC(char* pcIn_clk,int pcOut,int pcexOut)
 {
     static char pc[word+1]="00000000000000000000000000000000";
+    
+    //separate cycle from input
+    char pcIn[word+1]="";
+    char cycle[cycleBits+1]="";
+    strncpy(pcIn,pcIn_clk,word);
+    strncpy(cycle,pcIn_clk+word,cycleBits);
+    printf("pc1-%s\n",cycle);
+    //set new pc
     if(strToInt(pcIn,2)<0)//pc=pc+4
     {
         long int pcint= strToInt(pc,2);
@@ -51,25 +65,64 @@ void PC(char* pcIn,int pcOut,int pcexOut)
         if(pcint==16) exit(0);//Stop at last instruction
     }else//jump
         strncpy(pc,pcIn,word+1);
-    write(pcOut,pc,word + 1);
+    
+    //printf("PC:0x%lx\n",strToInt(pc,2));
+    
+    //increment cycle
+    strcpy(cycle,word-cycleBits + toBinaryString(strToInt(cycle,10)+PcCycles) );
+    printf("pc2-%s\n",cycle);
+    //concat pc & cycle
+    char out[word + cycleBits + 1]="";
+    strncpy(out,pc,word+1);
+    strcat(out,cycle);
+    
+    //pass bits
+    write(pcOut,out,word + cycleBits + 1);
     write(pcexOut,pc,word + 1);
 }
 
-void IM(char* imIn,int imOut)
+void IM(char* imIn_clk,int imOut)
 {
     static char mem[124][byte + 1] = {"00000110", "00000000", "00010000","00100000", //addi $s0, $zero, 6
                                       "00001000", "00000000", "00010001","00100000", //addi $s1, $zero, 8
                                       "00100000", "10000000", "00000000","00000000", //add $s0,$zero,$zero
                                       "00000001", "00000000", "00010001","00100010", //addi $s1,$s0,1
                                       "00100000", "01001000", "00100000","00000010"};//add $t1,$s1,$zero
+                                      
+    //Separate cycle from input
+    char imIn[word+1]="";
+    char cycle[cycleBits+1]="";
+    strncpy(imIn,imIn_clk,word);
+    strncpy(cycle,imIn_clk+word,cycleBits);
+    printf("im1-%s\n",cycle);
+
+    //fetch instruction
     long int nraddr= strToInt(imIn,2);
     char memOut[word+1]="";
     sprintf(memOut, "%s%s%s%s", mem[nraddr + 3], mem[nraddr + 2], mem[nraddr + 1], mem[nraddr]);
-    write(imOut, memOut, word + 1);
+    
+    //increment cycle
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+ImCycles));
+    printf("im2-%s\n",cycle);
+    
+    //concat result & cycle
+    char out[word + cycleBits + 1]="";
+    strncpy(out,memOut,word+1);
+    strcat(out,cycle);
+    
+    //pass bits
+    write(imOut, out, word + cycleBits + 1);
 }
 
-void DE(char* deIn, int deOut)
+void DE(char* deIn_clk, int deOut)
 {
+    //Separate cycle from input
+    char deIn[word+1]="";
+    char cycle[cycleBits+1]="";
+    strncpy(deIn,deIn_clk,word);
+    strncpy(cycle,deIn_clk+word,cycleBits);
+    printf("de1-%s\n",cycle);
+    
     //char var[nrBits+\0];
     char aluOp[aluOpBits+1]="";
     char opcode[fieldBits+1]="";
@@ -145,11 +198,22 @@ void DE(char* deIn, int deOut)
     char signals[deOutBits+1];//srcA+srcB+rs+rt+rd+aluOp+imm+jaddr
     sprintf(signals, "%c%s%s%s%s%s%s%s",srcA,srcB, rs,rt,rd,aluOp,imm,jaddr);
 
-    //output signals
+    //printf("Cycle %s:\n",cycle);
+    
+    //increment cycle
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+DeCycles));
+    printf("de2-%s\n",cycle);
+    
+    //concat result & cycle
+    char out[deOutBits + cycleBits + 1]="";
+    strncpy(out,signals,deOutBits+1);
+    strcat(out,cycle);
+    
+    //pass bits
     write(deOut, signals, deOutBits + 1);
 }
 
-void EX(char* exIn,char* pc,int exOut)
+void EX(char* exIn_clk,char* pc,int exOut)
 {
     static char registers[32][word+1]={ "00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000",
                                         "00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000",
@@ -159,6 +223,14 @@ void EX(char* exIn,char* pc,int exOut)
                                         "00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000",
                                         "00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000",
                                         "00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000","00000000000000000000000000000000"};
+    //Separate cycle from input
+    char exIn[deOutBits+1]="";
+    char cycle[cycleBits+1]="";
+    strncpy(exIn,exIn_clk,deOutBits);
+    strncpy(cycle,exIn_clk+deOutBits,cycleBits);
+    printf("ex1-%s\n",cycle);
+    
+    //get signals
     //exIn=opA+opB+aluOp
     long int opA,opB,result;
     char srcA=                          exIn[0];
@@ -170,9 +242,11 @@ void EX(char* exIn,char* pc,int exOut)
     char imm[immBits+1]="";             strncpy(imm,exIn+1+2+3*regBits+aluOpBits,immBits);
     char jaddr[jaddrBits+1]="";         strncpy(jaddr,exIn+1+2+3*regBits+aluOpBits+immBits,jaddrBits);
 
+    //set operands
     opA=srcA=='0'? strToInt(pc,2): strToInt(registers[strToInt(rs,2)],2);
     opB=srcB[0]=='0'?(srcB[1]=='0'?strToInt(registers[strToInt(rt,2)],2) : strToInt(imm,2)):(srcB[1]=='0'? strToInt(imm,2)*4: 0);
 
+    //do calculation
     switch (strToInt(aluOp,2)) {
         case 2://add
             result=opA+opB;
@@ -199,17 +273,34 @@ void EX(char* exIn,char* pc,int exOut)
             printf("default on alu\n");
             exit(1);
     }
-    printf("aluResult:%s/%ld\n", toBinaryString(result),result);
+    
+    //printf("Cycle %d: aluResult:%s/%ld\n",*cycle, toBinaryString(result),result);
 
+    //set result
+    char strResult[word+1]="";
     if(srcA=='0')
-        write(exOut,toBinaryString(result),word+1);
+        strcpy(strResult,toBinaryString(result));
     else
-        write(exOut,"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",word+1);
+        strcpy(strResult,"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+    
+    //increment cycle
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+ExCycles));
+    printf("ex2-%s\n",cycle);
+    
+    //concat result & cycle
+    char out[word + cycleBits + 1]="";
+    strncpy(out,strResult,word+1);
+    strcat(out,cycle);
+    
+    //pass bits
+    write(exOut,out,word+1);
 }
 
 int main()
 {
     long nbytes;
+    char cycle[cycleBits+1]="";
+    strncpy(cycle,toBinaryString(0),cycleBits);
     int ExPcPipe[2];//1-write 0-read
     int PcExPipe[2];
     int ImDePipe[2];
@@ -231,8 +322,8 @@ int main()
             close(ImDePipe[1]);
             close(PcImPipe[0]);
 
-            char PcBuff[+1];
-            while ((nbytes = read(ExPcPipe[0], PcBuff, word + 1)) > 0) {
+            char PcBuff[word+cycleBits+1];
+            while ((nbytes = read(ExPcPipe[0], PcBuff, word + cycleBits + 1)) > 0) {
                 PC(PcBuff,PcImPipe[1],PcExPipe[1]);
             }
             if (nbytes != 0)
@@ -248,8 +339,8 @@ int main()
             close(PcExPipe[1]);
             close(PcImPipe[1]);
 
-            char ImBuff[word+1];
-            while ((nbytes = read(PcImPipe[0], ImBuff, word + 1)) > 0) {
+            char ImBuff[word+cycleBits+1];
+            while ((nbytes = read(PcImPipe[0], ImBuff, word + cycleBits + 1)) > 0) {
                 IM(ImBuff,ImDePipe[1]);
             }
             if (nbytes != 0)
@@ -273,8 +364,8 @@ int main()
             close(PcExPipe[0]);
             close(DeExPipe[0]);
 
-            char DeBuff[word+1];
-            while ((nbytes = read(ImDePipe[0], DeBuff, word + 1)) > 0) {
+            char DeBuff[word+cycleBits+1];
+            while ((nbytes = read(ImDePipe[0], DeBuff, word + cycleBits + 1)) > 0) {
                 DE(DeBuff,DeExPipe[1]);
             }
             if (nbytes != 0)
@@ -285,12 +376,14 @@ int main()
         }else{//EX
             close(ImDePipe[0]);
             close(DeExPipe[1]);
+            
+            char start[word+cycleBits+1]="00000000000000000000000000000000";
+            strcat(start,cycle);
+            write(ExPcPipe[1],start,word+cycleBits+1);//start
 
-            write(ExPcPipe[1],"00000000000000000000000000000000",word+1);//start
-
-            char ExBuff[deOutBits+1];
+            char ExBuff[deOutBits+cycleBits+1];
             char pcBuff[word+1];
-            while ((nbytes = read(DeExPipe[0], ExBuff, deOutBits + 1)) > 0) {
+            while ((nbytes = read(DeExPipe[0], ExBuff, deOutBits + cycleBits + 1)) > 0) {
                 read(PcExPipe[0],pcBuff,word+1);
                 EX(ExBuff,pcBuff,ExPcPipe[1]);
             }
