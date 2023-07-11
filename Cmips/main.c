@@ -12,7 +12,7 @@
 #define fieldBits 6
 #define aluOpBits 4
 #define immBits 16
-#define deOutBits (regBits+regBits+regBits+shmatBits+aluOpBits+immBits)
+#define deOutBits (regBits+regBits+regBits+shmatBits+immBits)
 
 #define ctrlPCBits 4
 #define ctrlIMBits 3
@@ -31,8 +31,8 @@ long strToInt(char* str,int base)
     return intstr;
 }
 
-char* toBinaryString(int n) {
-    int num_bits = sizeof(int) * 8;
+char* toBinaryString(long int n) {
+    int num_bits = sizeof(long int)*4;
     char *string = malloc(num_bits + 1);
     if (!string) {
         return NULL;
@@ -47,9 +47,9 @@ char* toBinaryString(int n) {
 
 void Control(char* opcode,int ctlPCOut,int ctlIMOut,int ctlDEOut,int ctlEXOut);
 
-void PC(char*clk,char* pcIn,char* zero,int pcOut,char* ctrlSignals);
-void InstrMem(char* clk,char* addr,int addrOut,char* ctrlSignals);
-void Decode(char* clk, char*deDataIn, int deOut, int DataCtrlPipe,char* ctrlSignals);
+void PC(char*clk,char* pcIn,const char* zero,int pcOut,const char* ctrlSignals);
+void InstrMem(char* clk,char* addr,int addrOut,const char* ctrlSignals);
+void Decode(char* clk, char*deDataIn, int deOut, int DataCtrlPipe,const char* ctrlSignals);
 void Exec(char* clk,char* signals,int exOut,int zeroOut,char* ctrlSignals);
 
 int main() {
@@ -60,7 +60,124 @@ int main() {
         exit(1);
 
     //fork to have separate processes
-    if(fork()>0){//(Control runs on this process)
+    if(fork()>0){
+        close(DataCtrlPipe[0]);
+        close(CtrlPCPipe[1]);
+        close(CtrlIMPipe[1]);
+        close(CtrlDEPipe[1]);
+        close(CtrlEXPipe[1]);
+
+        int ImDePipe[2], ExPcPipe[2],zeroPipe[2];//1-write 0-read
+        //create pipes
+        if (pipe(ImDePipe) < 0 || pipe(ExPcPipe) < 0|| pipe(zeroPipe) < 0)
+            exit(1);
+
+        if (fork() > 0) {//DE & EX
+            close(ExPcPipe[0]);
+            close(zeroPipe[0]);
+            close(ImDePipe[1]);
+
+            int DeExPipe[2];
+            if (pipe(DeExPipe) < 0)
+                exit(1);
+
+            if (fork() > 0) {//(Exec runs on this process)
+                close(ImDePipe[0]);
+                close(DeExPipe[1]);
+                close(CtrlDEPipe[1]);
+                close(DataCtrlPipe[1]);
+
+                write(ExPcPipe[1], "00000000000000000000000000000000", word + 1); //PC start Load
+                write(zeroPipe[1],"0",bit+1);
+
+                char DeExBuff[deOutBits + 1];
+                char CtrlEXBuff[ctrlEXBits+1];
+                while ((nbytes = read(DeExPipe[0], DeExBuff, deOutBits + 1)) > 0) {
+                    //                    printf("signalsbuff:%s\n", DeExBuff);
+                    read(CtrlEXPipe[0],CtrlEXBuff,ctrlEXBits+1);
+                    Exec("1",DeExBuff,ExPcPipe[1],zeroPipe[1],CtrlEXBuff);
+                }
+                if (nbytes != 0)
+                    exit(2);
+
+                close(DeExPipe[0]);
+                close(ExPcPipe[1]);
+                close(zeroPipe[1]);
+                close(CtrlEXPipe[0]);
+            } else {//(Decode runs on this process )
+                close(ExPcPipe[1]);
+                close(zeroPipe[1]);
+                close(DeExPipe[0]);
+                close(CtrlEXPipe[0]);
+
+                char ImDeBuff[word + 1];
+                char CtrlDEBuff[ctrlDEBits+1];
+                while ((nbytes = read(ImDePipe[0], ImDeBuff, word + 1)) > 0) {
+//                    printf("addrout:%lx\n", strToInt(ImDeBuff,2));
+                    read(CtrlDEPipe[0],CtrlDEBuff,ctrlDEBits+1);
+                    Decode("1", ImDeBuff, DeExPipe[1],DataCtrlPipe[1],CtrlDEBuff);
+                }
+                if (nbytes != 0)
+                    exit(2);
+
+                close(ImDePipe[0]);
+                close(DeExPipe[1]);
+                close(CtrlDEPipe[0]);
+                close(DataCtrlPipe[1]);
+            }
+        } else {//PC & InM
+                            close(ImDePipe[0]);
+                            close(ExPcPipe[1]);
+                            close(zeroPipe[1]);
+
+                            int PcImPipe[2];//1-write 0-read
+                            if (pipe(PcImPipe) < 0)
+                                exit(1);
+
+
+                            if (fork() > 0) {//(PC runs on this process)
+                                close(ImDePipe[1]);
+                                close(PcImPipe[0]);
+                                close(CtrlIMPipe[0]);
+
+                                char ExPcBuff[word+1];
+                                char zeroBuff[bit+1];
+                                char CtrlPCBuff[ctrlPCBits+1]="";
+                                while ((nbytes = read(ExPcPipe[0], ExPcBuff, word + 1)) > 0) {
+                                    read(zeroPipe[0],zeroBuff,bit + 1);
+                                    read(CtrlPCPipe[0],CtrlPCBuff,ctrlPCBits+1);
+                                    printf("PC:%lx\n",strToInt(ExPcBuff,2));
+                                    PC("1", ExPcBuff,zeroBuff, PcImPipe[1],CtrlPCBuff);
+                                }
+                                if (nbytes != 0)
+                                    exit(2);
+
+                                close(ExPcPipe[0]);
+                                close(zeroPipe[0]);
+                                close(PcImPipe[1]);
+                                close(CtrlPCPipe[0]);
+                            } else {//(Instruction memory runs on this process)
+                                close(ExPcPipe[0]);
+                                close(zeroPipe[0]);
+                                close(PcImPipe[1]);
+                                close(CtrlPCPipe[0]);
+
+                                char PcImBuff[word + 1];
+                                char CtrlIMBuff[ctrlIMBits+1]="";
+                                while ((nbytes = read(PcImPipe[0], PcImBuff, word + 1)) > 0) {
+                                    read(CtrlIMPipe[0],CtrlIMBuff,ctrlIMBits+1);
+                                    printf("IM:%lx\n",strToInt(PcImBuff,2));
+                                    InstrMem("1", PcImBuff, ImDePipe[1],CtrlIMBuff);
+                                }
+                                if (nbytes != 0)
+                                    exit(2);
+
+                                close(PcImPipe[0]);
+                                close(ImDePipe[1]);
+                                close(CtrlIMPipe[0]);
+                            }
+        }
+    }else{//(Control runs on this process)
         write(DataCtrlPipe[1],"xxxxxx",fieldBits + 1);//Start Control module
         close(DataCtrlPipe[1]);
         close(CtrlPCPipe[0]);
@@ -84,128 +201,12 @@ int main() {
         close(CtrlIMPipe[1]);
         close(CtrlDEPipe[1]);
         close(CtrlEXPipe[1]);
-    }else{
-        close(DataCtrlPipe[0]);
-        close(CtrlPCPipe[1]);
-        close(CtrlIMPipe[1]);
-        close(CtrlDEPipe[1]);
-        close(CtrlEXPipe[1]);
 
-        int ImDePipe[2], ExPcPipe[2],zeroPipe[2];//1-write 0-read
-        //create pipes
-        if (pipe(ImDePipe) < 0 || pipe(ExPcPipe) < 0|| pipe(zeroPipe) < 0)
-            exit(1);
-
-        if (fork() > 0) {//PC & InM
-            close(ImDePipe[0]);
-            close(ExPcPipe[1]);
-            close(zeroPipe[1]);
-
-            int PcImPipe[2];//1-write 0-read
-            if (pipe(PcImPipe) < 0)
-                exit(1);
-
-
-            if (fork() > 0) {//(PC runs on this process)
-                close(ImDePipe[1]);
-                close(PcImPipe[0]);
-                close(CtrlIMPipe[0]);
-
-                char ExPcBuff[word+1];
-                char zeroBuff[bit+1];
-                char CtrlPCBuff[ctrlPCBits+1]="";
-                while ((nbytes = read(ExPcPipe[0], ExPcBuff, word + 1)) > 0) {
-                    read(zeroPipe[0],zeroBuff,bit + 1);
-                    read(CtrlPCPipe[0],CtrlPCBuff,ctrlPCBits+1);
-                    printf("PC:%lx\n",strToInt(ExPcBuff,2));
-                    PC("1", ExPcBuff,zeroBuff, PcImPipe[1],CtrlPCBuff);
-                }
-                if (nbytes != 0)
-                    exit(2);
-
-                close(ExPcPipe[0]);
-                close(zeroPipe[0]);
-                close(PcImPipe[1]);
-                close(CtrlPCPipe[0]);
-            } else {//(Instruction memory runs on this process)
-                close(ExPcPipe[0]);
-                close(zeroPipe[0]);
-                close(PcImPipe[1]);
-                close(CtrlPCPipe[0]);
-
-                char PcImBuff[word + 1];
-                char CtrlIMBuff[ctrlIMBits+1]="";
-                while ((nbytes = read(PcImPipe[0], PcImBuff, word + 1)) > 0) {
-                    read(CtrlIMPipe[0],CtrlIMBuff,ctrlIMBits+1);
-                    printf("IM:%lx\n",strToInt(PcImBuff,2));
-                    InstrMem("1", PcImBuff, ImDePipe[1],CtrlIMBuff);
-                }
-                if (nbytes != 0)
-                    exit(2);
-
-                close(PcImPipe[0]);
-                close(ImDePipe[1]);
-                close(CtrlIMPipe[0]);
-            }
-        } else {//DE & EX
-            close(ExPcPipe[0]);
-            close(zeroPipe[0]);
-            close(ImDePipe[1]);
-
-            int DeExPipe[2];
-            if (pipe(DeExPipe) < 0)
-                exit(1);
-
-            if (fork() > 0) {//(Decode runs on this process )
-                close(ExPcPipe[1]);
-                close(zeroPipe[1]);
-                close(DeExPipe[0]);
-                close(CtrlEXPipe[0]);
-
-                char ImDeBuff[word + 1];
-                char CtrlDEBuff[ctrlDEBits+1];
-                while ((nbytes = read(ImDePipe[0], ImDeBuff, word + 1)) > 0) {
-                    printf("addrout:%lx\n", strToInt(ImDeBuff,2));
-                    read(CtrlDEPipe[0],CtrlDEBuff,ctrlDEBits+1);
-                    Decode("1", ImDeBuff, DeExPipe[1],DataCtrlPipe[1],CtrlDEBuff);
-                }
-                if (nbytes != 0)
-                    exit(2);
-
-                close(ImDePipe[0]);
-                close(DeExPipe[1]);
-                close(CtrlDEPipe[0]);
-                close(DataCtrlPipe[1]);
-            } else {//(Exec runs on this process)
-                close(ImDePipe[0]);
-                close(DeExPipe[1]);
-                close(CtrlDEPipe[1]);
-                close(DataCtrlPipe[1]);
-
-                write(ExPcPipe[1], "00000000000000000000000000000000", word + 1); //PC start Load
-                write(zeroPipe[1],"0",bit+1);
-
-                char DeExBuff[deOutBits + 1];
-                char CtrlEXBuff[ctrlEXBits+1];
-                while ((nbytes = read(DeExPipe[0], DeExBuff, deOutBits + 1)) > 0) {
-                    printf("signalsbuff:%s\n", DeExBuff);
-                    read(CtrlEXPipe[0],CtrlEXBuff,ctrlEXBits+1);
-                    Exec("1",DeExBuff,ExPcPipe[1],zeroPipe[1],CtrlEXBuff);
-                }
-                if (nbytes != 0)
-                    exit(2);
-
-                close(DeExPipe[0]);
-                close(ExPcPipe[1]);
-                close(zeroPipe[1]);
-                close(CtrlEXPipe[0]);
-            }
-        }
     }
     return 0;
 }
 
-void PC(char*clk,char* pcIn,char* zero,int pcOut,char* ctrlSignals){
+void PC(char*clk,char* pcIn,const char* zero,int pcOut,const char* ctrlSignals){
     static char pc[word+1]="00000000000000000000000000000000";
     static char writedataReg[word+1]="";
     if(strcmp(clk,"1")!=0){
@@ -213,7 +214,9 @@ void PC(char*clk,char* pcIn,char* zero,int pcOut,char* ctrlSignals){
         return;
     }
     strncpy(writedataReg,pcIn,word+1);
-    if(ctrlSignals[2]=='1'||(ctrlSignals[3]=='1'&&zero[0]=='1'))
+    char PCWrite=ctrlSignals[2];
+    char PCWriteCond=ctrlSignals[3];
+    if(PCWrite=='1'||(PCWriteCond=='1'&&zero[0]=='1'))
     {
         strncpy(pc,pcIn,word+1);
         printf("PC:%lx\n",strToInt(pc,2));
@@ -221,7 +224,7 @@ void PC(char*clk,char* pcIn,char* zero,int pcOut,char* ctrlSignals){
     write(pcOut,pc,word + 1);
 }
 
-void InstrMem(char* clk,char* addr,int addrOut,char* ctrlSignals) {
+void InstrMem(char* clk,char* addr,int addrOut,const char* ctrlSignals) {
 //    static char mem[124]={(char)0b00000110,(char)0b00000000,(char)0b00010000,(char)0b00100000,
 //                          (char)0b00001000,(char)0b00000000,(char)0b00010001,(char)0b00100000,
 //                          (char)0b00100000,(char)0b10000000,(char)0b00000000,(char)0b00000000,
@@ -236,29 +239,34 @@ void InstrMem(char* clk,char* addr,int addrOut,char* ctrlSignals) {
         printf("IM-clk!=1\n");//debug
         return;
     }
-//convert addr from "hex"string to int
-    long nraddr = strToInt(addr,2);
-//read from memory (little-endian)
     char memOut[word + 1] = "";
-    sprintf(memOut, "%s%s%s%s", mem[nraddr + 3], mem[nraddr + 2], mem[nraddr + 1], mem[nraddr]);
+    char IoD=ctrlSignals[0];
+    char MemRead=ctrlSignals[1];
+    char MemWrite=ctrlSignals[2];
 
+    if(IoD=='0'&&MemRead=='1') {
+//convert addr from "hex"string to int
+        long nraddr = strToInt(addr, 2);
+//read from memory (little-endian)
+        sprintf(memOut, "%s%s%s%s", mem[nraddr + 3], mem[nraddr + 2], mem[nraddr + 1], mem[nraddr]);
+    }
 //    printf("memOut:%s\n",memOut);
 //output memOut
     write(addrOut, memOut, word + 1);
 }
 
-void Decode(char* clk, char*deDataIn, int deOut, int DataCtrlPipe,char* ctrlSignals){
-    //static char instruction[word+1]="00000000000000000000000000000000";
+void Decode(char* clk, char*deDataIn, int deOut, int DataCtrlPipe,const char* ctrlSignals){
+    static char instruction[word+1]="00000000000000000000000000000000";
 
     if(strcmp(clk,"1")!=0){
         printf("DC-clk!=1\n");
         return;
     }
+    char IRWrite=ctrlSignals[0];
 
-    //    if(irWrite=="1") strcpy(instruction,memOut);
+    if(IRWrite=='1') strcpy(instruction,deDataIn);
 
     //char var[nrBits+\0];
-    char aluOp[aluOpBits+1]="";
     char opcode[fieldBits+1]="";
     char rs[regBits+1]="";
     char rt[regBits+1]="";
@@ -267,59 +275,17 @@ void Decode(char* clk, char*deDataIn, int deOut, int DataCtrlPipe,char* ctrlSign
     char shmat[shmatBits+1]="";
     char imm[immBits+1]="";
     //deDataIn=opcode+( rs+rt+(rd+shmat+fnct || imm) // ||  addr )
-    strncpy(opcode, (word-1) - 31 + deDataIn, 6);
-    strncpy(rs, (word-1) - 25 + deDataIn, 5);
-    strncpy(rt, (word-1) - 20 + deDataIn, 5);
-    strncpy(rd, (word-1) - 15 + deDataIn, 5);
-    strncpy(shmat, (word-1) - 10 + deDataIn, 5);
-    strncpy(fnct, (word-1) - 5 + deDataIn, 6);
-    strncpy(imm, (word-1) - 15 + deDataIn, 16);
+    strncpy(opcode, (word-1) - 31 + instruction, 6);
+    strncpy(rs, (word-1) - 25 + instruction, 5);
+    strncpy(rt, (word-1) - 20 + instruction, 5);
+    strncpy(rd, (word-1) - 15 + instruction, 5);
+    strncpy(shmat, (word-1) - 10 + instruction, 5);
+    strncpy(fnct, (word-1) - 5 + instruction, 6);
+    strncpy(imm, (word-1) - 15 + instruction, 16);
 
-    switch (strToInt(opcode,10)) {
-        case 000000://R-Type
-            switch (strToInt(fnct,10)) {
-                case 100000:
-                    strcpy(aluOp,"0010");//add
-                    break;
-                case 100100:
-                    strcpy(aluOp,"0110");//sub
-                    break;
-                case 100110:
-                    strcpy(aluOp,"0000");//and
-                    break;
-                case 100111:
-                    strcpy(aluOp,"0001");//or
-                    break;
-                case 101010:
-                    strcpy(aluOp,"0111");//slt
-                    break;
-                case 101000:
-                    strcpy(aluOp,"0011");//xor
-                    break;
-                case 101001:
-                    strcpy(aluOp,"0100");//nor
-                    break;
-                default:
-                    printf("Default on DE switch(fnct)\n");
-                    exit(1);
-            }
-            break;
-        case 1000://addi-001000
-            strcpy(aluOp,"0010");//add
-            break;
-        case 100://beq-000100
-            strcpy(aluOp,"0110");//sub
-            break;
-        case 10://jump-000010
-            break;
-        default:
-            printf("opcode:%s, intopcode:%ld\n",opcode,strToInt(opcode,10));
-            printf("Default on DE switch(opcode)\n");
-            exit(1);
-    }
 
-    char signals[deOutBits+1];//rs+rt+rd+shmat+aluOp+imm
-    sprintf(signals, "%s%s%s%s%s%s", rs,rt,rd,shmat,aluOp,imm);
+    char signals[deOutBits+1];//rs+rt+rd+shmat+fnct+imm
+    sprintf(signals, "%s%s%s%s%s%s", rs,rt,rd,shmat,fnct,imm);
 
 //    char signals[deOutBits+1];//opA+opB+aluOp
 
@@ -345,7 +311,91 @@ void Exec(char* clk,char* signals,int exOut,int zeroOut,char* ctrlSignals){
         return;
     }
 
-    if(i<3)
+
+    char MemtoReg=ctrlSignals[0];
+    char RegDst=ctrlSignals[1];
+    char RegWrite= ctrlSignals[2];
+    char AluSrcA=ctrlSignals[3];
+    char AluSrcB1=ctrlSignals[4];
+    char AluSrcB0=ctrlSignals[5];
+    char AluOP[2+1]="";
+    strncpy(AluOP,ctrlSignals+6,2);
+
+    char rs[regBits+1]="";
+    char rt[regBits+1]="";
+    char rd[regBits+1]="";
+    char fnct[fieldBits+1]="";
+    char imm[immBits+1]="";
+    strncpy(rs,signals,regBits);
+    strncpy(rt,signals+regBits,regBits);
+    strncpy(rd,signals+regBits+regBits,regBits);
+    strncpy(fnct,signals+regBits+regBits+regBits+regBits,fieldBits);
+    strncpy(imm,signals+regBits+regBits+regBits+regBits+fieldBits,immBits);
+
+    long int opA,opB,result;
+    if(AluSrcA=='1')
+        opA= strToInt(registers[strToInt(rs,2)],2);
+    //else
+        //opA=pc;
+
+    if(AluSrcB1=='0')
+        if(AluSrcB0=='0')
+            opB=strToInt(registers[strToInt(rt,2)],2);
+        else
+            opB=4;
+    else
+        if(AluSrcB0=='0')
+            opB= strToInt(imm,2);
+        else
+            opB=strToInt(imm,2)<<2;
+    //ALU
+    switch (strToInt(AluOP,10)) {
+        case 0://addi-001000
+            result = opA+opB;
+            break;
+        case 1://beq-000100
+            result = opA-opB;
+            break;
+        case 11:
+        case 10:
+            switch (strToInt(fnct, 10)) {
+                case 100000:
+                    result = opA+opB;
+                    break;
+                case 100100:
+                    result = opA-opB;
+                    break;
+                case 100110:
+                    result = opA&opB;
+                    break;
+                case 100111:
+                    result = opA|opB;
+                    break;
+                case 101010:
+                    result = opA<opB;
+                    break;
+                case 101000:
+                    result = opA^opB;
+                    break;
+                case 101001:
+                    result = ~(opA|opB);
+                    break;
+                default:
+                    printf("Default on DE switch(fnct)\n");
+                    exit(1);
+            }
+            break;
+        default:
+            printf("Default on EX switch(Alu)\n");
+            exit(1);
+    }
+
+    if(RegWrite=='1')
+        strcpy(registers[strToInt(RegDst=='0'?rd:rt ,2)], toBinaryString(result));//MemtoReg=='0'?result:memory;
+
+
+    strcpy(registers[0],"00000000000000000000000000000000");
+    if(i<12)
     {
         write(exOut,toBinaryString(i*4), word + 1);
         write(zeroOut,"0",bit+1);
@@ -448,10 +498,10 @@ void Control(char* opcode,int ctlPCOut,int ctlIMOut,int ctlDEOut,int ctlEXOut){
             printf("Default on Ctrl switch(state)\n");
             exit(1);
     }
-    char tempPC[ctrlPCBits+1]="";
-    char tempIM[ctrlIMBits+1]="";
-    char tempDE[ctrlDEBits+1]="";
-    char tempEX[ctrlEXBits+1]="";
+    char tempPC[ctrlPCBits+1]="";   //bit+
+    char tempIM[ctrlIMBits+1]="";   //bit+
+    char tempDE[ctrlDEBits+1]="";   //bit+
+    char tempEX[ctrlEXBits+1]="";   //bit+
     strncpy(tempPC,ctrlSignals,ctrlPCBits);
     write(ctlPCOut,tempPC,ctrlPCBits+1);
     strncpy(tempIM,ctrlSignals+ctrlPCBits,ctrlIMBits);
