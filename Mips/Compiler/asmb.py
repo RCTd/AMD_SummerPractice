@@ -76,6 +76,9 @@ def main():
     for bin in binary:
         print(f"{bin[24:31]} {bin[16:23]} {bin[8:15]} {bin[0:7]}")
 
+    for bin in binary:
+        print(f"\"{bin[24:31]}\",\"{bin[16:23]}\",\"{bin[8:15]}\",\"{bin[0:7]}\",")
+
 def jtypeToBin(inst,registers):
     op=jtype[inst]
     tag=tags[registers+":"]

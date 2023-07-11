@@ -9,7 +9,7 @@
 #define DeCycles 1
 #define ExCycles 1
 
-#define cycleBits 5
+#define cycleBits 9 //<=32
 #define word 32
 #define byte 8
 #define regBits 5
@@ -56,7 +56,7 @@ void PC(char* pcIn_clk,int pcOut,int pcexOut)
     char cycle[cycleBits+1]="";
     strncpy(pcIn,pcIn_clk,word);
     strncpy(cycle,pcIn_clk+word,cycleBits);
-    printf("pc1-%s\n",cycle);
+//    printf("pc1-%s\n",cycle);
     //set new pc
     if(strToInt(pcIn,2)<0)//pc=pc+4
     {
@@ -66,11 +66,12 @@ void PC(char* pcIn_clk,int pcOut,int pcexOut)
     }else//jump
         strncpy(pc,pcIn,word+1);
     
-    //printf("PC:0x%lx\n",strToInt(pc,2));
+    printf("%ld: PCout:0x%lx\n", strToInt(cycle,2),strToInt(pc,2));
     
     //increment cycle
-    strcpy(cycle,word-cycleBits + toBinaryString(strToInt(cycle,10)+PcCycles) );
-    printf("pc2-%s\n",cycle);
+    strcpy(cycle,word-cycleBits + toBinaryString(strToInt(cycle,2)+PcCycles) );
+//    printf("pc2-%s\n",cycle);
+
     //concat pc & cycle
     char out[word + cycleBits + 1]="";
     strncpy(out,pc,word+1);
@@ -94,16 +95,18 @@ void IM(char* imIn_clk,int imOut)
     char cycle[cycleBits+1]="";
     strncpy(imIn,imIn_clk,word);
     strncpy(cycle,imIn_clk+word,cycleBits);
-    printf("im1-%s\n",cycle);
+//    printf("im1-%s\n",cycle);
 
     //fetch instruction
     long int nraddr= strToInt(imIn,2);
     char memOut[word+1]="";
     sprintf(memOut, "%s%s%s%s", mem[nraddr + 3], mem[nraddr + 2], mem[nraddr + 1], mem[nraddr]);
-    
+
+    printf("%ld: IMout:%s\n", strToInt(cycle,2),memOut);
+
     //increment cycle
-    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+ImCycles));
-    printf("im2-%s\n",cycle);
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,2)+ImCycles));
+//    printf("im2-%s\n",cycle);
     
     //concat result & cycle
     char out[word + cycleBits + 1]="";
@@ -121,7 +124,7 @@ void DE(char* deIn_clk, int deOut)
     char cycle[cycleBits+1]="";
     strncpy(deIn,deIn_clk,word);
     strncpy(cycle,deIn_clk+word,cycleBits);
-    printf("de1-%s\n",cycle);
+//    printf("de1-%s\n",cycle);
     
     //char var[nrBits+\0];
     char aluOp[aluOpBits+1]="";
@@ -198,11 +201,10 @@ void DE(char* deIn_clk, int deOut)
     char signals[deOutBits+1];//srcA+srcB+rs+rt+rd+aluOp+imm+jaddr
     sprintf(signals, "%c%s%s%s%s%s%s%s",srcA,srcB, rs,rt,rd,aluOp,imm,jaddr);
 
-    //printf("Cycle %s:\n",cycle);
-    
+    printf("%ld: DEout:%s\n", strToInt(cycle,2),signals);
+
     //increment cycle
-    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+DeCycles));
-    printf("de2-%s\n",cycle);
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,2)+DeCycles));
     
     //concat result & cycle
     char out[deOutBits + cycleBits + 1]="";
@@ -210,7 +212,7 @@ void DE(char* deIn_clk, int deOut)
     strcat(out,cycle);
     
     //pass bits
-    write(deOut, signals, deOutBits + 1);
+    write(deOut, out, deOutBits+ cycleBits + 1);
 }
 
 void EX(char* exIn_clk,char* pc,int exOut)
@@ -228,7 +230,7 @@ void EX(char* exIn_clk,char* pc,int exOut)
     char cycle[cycleBits+1]="";
     strncpy(exIn,exIn_clk,deOutBits);
     strncpy(cycle,exIn_clk+deOutBits,cycleBits);
-    printf("ex1-%s\n",cycle);
+//    printf("ex1-%s\n",cycle);
     
     //get signals
     //exIn=opA+opB+aluOp
@@ -273,8 +275,6 @@ void EX(char* exIn_clk,char* pc,int exOut)
             printf("default on alu\n");
             exit(1);
     }
-    
-    //printf("Cycle %d: aluResult:%s/%ld\n",*cycle, toBinaryString(result),result);
 
     //set result
     char strResult[word+1]="";
@@ -282,10 +282,11 @@ void EX(char* exIn_clk,char* pc,int exOut)
         strcpy(strResult,toBinaryString(result));
     else
         strcpy(strResult,"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+
+    printf("%ld: aluResult:%s / %ld\n", strToInt(cycle,2), toBinaryString(result),result);
     
     //increment cycle
-    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,10)+ExCycles));
-    printf("ex2-%s\n",cycle);
+    strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,2)+ExCycles));
     
     //concat result & cycle
     char out[word + cycleBits + 1]="";
@@ -293,14 +294,15 @@ void EX(char* exIn_clk,char* pc,int exOut)
     strcat(out,cycle);
     
     //pass bits
-    write(exOut,out,word+1);
+    write(exOut,out,word+cycleBits+1);
 }
 
 int main()
 {
     long nbytes;
     char cycle[cycleBits+1]="";
-    strncpy(cycle,toBinaryString(0),cycleBits);
+    strncpy(cycle,word-cycleBits+ toBinaryString(1),cycleBits);
+//    printf("start cycle:%s.\n",cycle);
     int ExPcPipe[2];//1-write 0-read
     int PcExPipe[2];
     int ImDePipe[2];
