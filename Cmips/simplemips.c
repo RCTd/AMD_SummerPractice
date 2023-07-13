@@ -9,7 +9,7 @@
 #define DeCycles 1
 #define ExCycles 1
 #define lastInst 80
-#define maxCycle 2000
+#define maxCycle 200
 
 #define nrcontrols 6
 #define bit 1
@@ -71,7 +71,7 @@ void PC(char* pcIn_clk,int pcOut,int pcexOut)
     }else//jump
         strncpy(pc,pcIn,word+1);
     
-    printf("%ld: PCout:0x%lx / %ld\n", strToInt(cycle,2),strToInt(pc,2),strToInt(pc,2));
+    printf("PC-%ld: PCout:0x%lx / %ld\n", strToInt(cycle,2),strToInt(pc,2),strToInt(pc,2));
     
     //increment cycle
     strcpy(cycle,word-cycleBits + toBinaryString(strToInt(cycle,2)+PcCycles) );
@@ -125,7 +125,7 @@ void IM(char* imIn_clk,int imOut)
 
     sprintf(memOut, "%s%s%s%s", mem[nraddr + 3], mem[nraddr + 2], mem[nraddr + 1], mem[nraddr]);
 
-    printf("%ld: IMout:%s\n", strToInt(cycle,2),memOut);
+    printf("IM-%ld: IMout:%s\n", strToInt(cycle,2),memOut);
 
     //increment cycle
     strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,2)+ImCycles));
@@ -239,7 +239,7 @@ void DE(char* deIn_clk, int deOut)
     char signals[deOutBits+1];//memWrite+RegWrite+MemtoReg+RegDst+jump+brench+srcA+srcB+rs+rt+rd+aluOp+imm+jaddr
     sprintf(signals, "%c%c%c%c%c%c%c%s%s%s%s%s%s%s",memWrite,regWrite,MemtoReg,RegDst,jump,brench,srcA,srcB, rs,rt,rd,aluOp,imm,jaddr);
 
-    printf("%ld: memWrite:%c, regWrite:%c, MemtoReg:%c, RegDst:%c, jump:%c, brench:%c, srcA:%c, srcB:%s, rs:%s, rt:%s, rd:%s\nimm:%s, jaddr:%s, DEout:%s\n", strToInt(cycle,2),
+    printf("DE-%ld: memWrite:%c, regWrite:%c, MemtoReg:%c, RegDst:%c, jump:%c, brench:%c, srcA:%c, srcB:%s, rs:%s, rt:%s, rd:%s\nimm:%s, jaddr:%s, DEout:%s\n", strToInt(cycle,2),
            memWrite,regWrite,MemtoReg,RegDst,jump,brench,
            srcA,srcB, rs,rt,rd,imm,jaddr,signals);
 
@@ -349,7 +349,7 @@ void EX(char* exIn_clk,char* pc,int exOut)
     }else
         strcpy(strResult,"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 
-    printf("%ld: aluResult:%s / %ld\n", strToInt(cycle,2), toBinaryString(result),result);
+    printf("EX-%ld: aluResult:%s / %ld\n", strToInt(cycle,2), toBinaryString(result),result);
     
     //increment cycle
     strcpy(cycle,word-cycleBits +toBinaryString(strToInt(cycle,2)+ExCycles));
