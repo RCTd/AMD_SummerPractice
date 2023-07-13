@@ -1,13 +1,15 @@
 module test();
-  reg clk;
+  reg clk,start;
   
-  MIPS mips(.clk(clk));
+  MIPS mips(.clk(clk),.start(start));
   
   integer i;
   initial
     begin
-      clk=1'bz;
+      clk=1'b1;
+      start=1'b0;
       #5 clk= 1'b0;
+      start=1'b1;
       forever #5 clk = ~clk;
     end
   
@@ -28,7 +30,5 @@ module test();
         #5;
       #20 $finish(1);	
 //       #700 $finish(1);
-
   end
-
 endmodule
