@@ -7,11 +7,13 @@
 `include "ALU.sv"
 `include "ALUcontrol.sv"    
       
-module MIPS(clk);
+module MIPS(clk,start);
   input clk;
+  input start;
   
   PC pc(.in(pcin),
         .clk(clk),
+        .start(start),
         .out(pcout));
   InstructionMemory im(.addr(pcout),
                        .out(instruction));

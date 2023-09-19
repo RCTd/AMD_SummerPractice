@@ -30,5 +30,7 @@ module test();
         #5;
       #20 $finish(1);	
 //       #700 $finish(1);
+
   end
+
 endmodule
